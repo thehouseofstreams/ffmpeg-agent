@@ -1,15 +1,33 @@
-export type FfmpegMethod = 'copy' | 'encode';
 export type FfmpegState = 'starting' | 'running' | 'paused' | 'stopped' | 'error' | 'killed';
 
 export interface FfmpegJobConfig {
   input: string;
   output: string;
-  method: FfmpegMethod;
-  extraArgs?: string[];
-  userAgent?: string;
-  origin?: string;
-  presetName?: string;
+  method: 'copy' | 'encode';
+  preset?: 'low' | 'medium' | 'high' | 'custom';
+
+  headers?: {
+    userAgent?: string;
+    referer?: string;
+    origin?: string;
+    cookie?: string;
+    authorization?: string;
+    accept?: string;
+    acceptLanguage?: string;
+    acceptEncoding?: string;
+  };
+
+  customOptions?: {
+    crf?: number;
+    fps?: number;
+    width?: number;
+    videoBitrate?: string;
+    audioBitrate?: string;
+    maxrate?: string;
+    bufsize?: string;
+  };
 }
+
 
 export interface RuntimeStats {
   state: FfmpegState;

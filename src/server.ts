@@ -1,42 +1,53 @@
 import express from 'express';
-import cors from 'cors';
 import http from 'http';
-import { Server as IOServer } from 'socket.io';
-import { ffmpegManager } from './ffmpegAgent.js';
-import { env } from './env.js';
+import { Server } from 'socket.io';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import { ffmpegManager } from './ffmpegAgent';
+import type { FfmpegJobConfig } from './types';
+
+dotenv.config();
 
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST', 'DELETE'],
+  },
+});
+
+app.use(cors());
 app.use(express.json());
 
-if (env.CORS_ORIGINS.includes('*')) {
-  app.use(cors());
-} else {
-  app.use(cors({
-    origin: env.CORS_ORIGINS,
-  }));
-}
+// Emitir estado inicial a todos los clientes nuevos
+io.on('connection', (socket) => {
+  socket.emit('jobs', ffmpegManager.listJobs());
+});
 
-// --- REST ---
-app.get('/jobs', (req, res) => {
+// Reemitir cambios a todos los clientes conectados
+ffmpegManager.on('update', () => {
+  io.emit('jobs', ffmpegManager.listJobs());
+});
+
+// API Routes
+app.get('/jobs', (_req, res) => {
   res.json(ffmpegManager.listJobs());
 });
 
 app.get('/jobs/:id', (req, res) => {
   const job = ffmpegManager.getJob(req.params.id);
-  if (!job) return res.status(404).json({ error: 'not_found' });
+  if (!job) return res.status(404).json({ error: 'Not found' });
   res.json(job);
 });
 
 app.post('/jobs', (req, res) => {
-  const { input, output, method, extraArgs, userAgent, origin, presetName } = req.body ?? {};
-  if (!input || !output || !method) return res.status(400).json({ error: 'missing_fields' });
-
-  // simple allow list
-  const allowed = env.ALLOWED_INPUT_PATTERNS.some((re: RegExp) => re.test(input));
-  if (!allowed) return res.status(400).json({ error: 'input_not_allowed' });
-
-  const job = ffmpegManager.createJob({ input, output, method, extraArgs, userAgent, origin, presetName });
-  res.status(201).json(job);
+  try {
+    const job = ffmpegManager.createJob(req.body as FfmpegJobConfig);
+    res.status(201).json(job);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 app.post('/jobs/:id/pause', (req, res) => {
@@ -56,28 +67,10 @@ app.post('/jobs/:id/restart', (req, res) => {
 
 app.delete('/jobs/:id', (req, res) => {
   ffmpegManager.killJob(req.params.id);
-  res.json({ ok: true });
+  res.status(204).end();
 });
 
-// --- SOCKET.IO ---
-const server = http.createServer(app);
-const io = new IOServer(server, {
-  cors: env.CORS_ORIGINS.includes('*')
-    ? { origin: true, methods: ['GET','POST'] }
-    : { origin: env.CORS_ORIGINS, methods: ['GET','POST'] }
-});
-
-io.on('connection', socket => {
-  socket.emit('jobs_snapshot', ffmpegManager.listJobs());
-
-  const handler = (job: any) => socket.emit('job_update', job);
-  ffmpegManager.on('update', handler);
-
-  socket.on('disconnect', () => {
-    ffmpegManager.off('update', handler);
-  });
-});
-
-server.listen(env.PORT, () => {
-  console.log(`FFmpeg agent API + WS listening on :${env.PORT}`);
+const PORT = process.env.PORT || 8080;
+server.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
 });

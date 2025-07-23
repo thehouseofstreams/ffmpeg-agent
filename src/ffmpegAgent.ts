@@ -8,7 +8,11 @@ export class FfmpegManager extends EventEmitter {
 
   createJob(cfg: FfmpegJobConfig): FfmpegJob {
     const id = randomUUID();
-    const job: FfmpegJob = { id, ...cfg, state: 'starting' } as any;
+    const job: FfmpegJob = {
+      id,
+      ...cfg,
+      state: 'starting',
+    } as FfmpegJob;
     this.jobs.set(id, { job });
     this.emit('update', { ...job });
     setImmediate(() => this.startJob(id));
@@ -18,22 +22,26 @@ export class FfmpegManager extends EventEmitter {
   private buildArgs(job: FfmpegJobConfig): string[] {
     const copyMode = job.method === 'copy';
 
-    const headers = copyMode
-      ? [
-          '-headers',
-          "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\nReferer: https://alkass.net\r\n",
-        ]
-      : [];
+    // Headers opcionales
+    const headers: string[] = [];
+    if (job.headers?.userAgent || job.headers?.referer) {
+      const headerLines = [];
+      if (job.headers?.userAgent) headerLines.push(`User-Agent: ${job.headers?.userAgent}`);
+      if (job.headers?.referer) headerLines.push(`Referer: ${job.headers?.referer}`);
+      headers.push('-headers', headerLines.join('\r\n'));
+    }
 
-    const inputArgs = [
-      ...headers,
-      '-i', job.input,
-    ];
+    const inputArgs = [...headers, '-i', job.input];
 
-    const processingArgs = copyMode
-      ? ['-c', 'copy', '-f', 'flv']
-      : (job.extraArgs ?? 
-        [
+    if (copyMode) {
+      return ['-y', ...inputArgs, '-c', 'copy', '-f', 'flv', job.output];
+    }
+
+    // Presets de encoding
+    let processingArgs: string[];
+    switch (job.preset) {
+      case 'low':
+        processingArgs = [
           '-c:v', 'libx264',
           '-preset', 'veryfast',
           '-crf', '28',
@@ -43,13 +51,56 @@ export class FfmpegManager extends EventEmitter {
           '-bufsize', '1600k',
           '-c:a', 'aac',
           '-b:a', '96k'
-        ]);
-    return [
-      '-y',
-      ...inputArgs,
-      ...processingArgs,
-      job.output,
-    ];
+        ];
+        break;
+      case 'medium':
+        processingArgs = [
+          '-c:v', 'libx264',
+          '-preset', 'faster',
+          '-crf', '23',
+          '-vf', 'scale=-2:720,fps=30',
+          '-b:v', '1500k',
+          '-maxrate', '2000k',
+          '-bufsize', '3000k',
+          '-c:a', 'aac',
+          '-b:a', '128k'
+        ];
+        break;
+      case 'high':
+        processingArgs = [
+          '-c:v', 'libx264',
+          '-preset', 'fast',
+          '-crf', '20',
+          '-vf', 'scale=-2:1080,fps=30',
+          '-b:v', '3000k',
+          '-maxrate', '4000k',
+          '-bufsize', '5000k',
+          '-c:a', 'aac',
+          '-b:a', '192k'
+        ];
+        break;
+      case 'custom': {
+        const o = job.customOptions ?? {};
+        processingArgs = [
+          '-c:v', 'libx264',
+          '-preset', 'veryfast',
+          ...(o.crf !== undefined ? ['-crf', String(o.crf)] : []),
+          ...(o.fps !== undefined || o.width !== undefined
+            ? ['-vf', `scale=${o.width ? `${o.width}:-2` : '-2:-2'}${o.fps ? `,fps=${o.fps}` : ''}`]
+            : []),
+          ...(o.videoBitrate ? ['-b:v', o.videoBitrate] : []),
+          ...(o.maxrate ? ['-maxrate', o.maxrate] : []),
+          ...(o.bufsize ? ['-bufsize', o.bufsize] : []),
+          '-c:a', 'aac',
+          ...(o.audioBitrate ? ['-b:a', o.audioBitrate] : ['-b:a', '96k'])
+        ];
+        break;
+      }
+      default:
+        throw new Error(`Unknown preset: ${job.preset}`);
+    }
+
+    return ['-y', ...inputArgs, ...processingArgs, job.output];
   }
 
   startJob(id: string) {
@@ -57,9 +108,9 @@ export class FfmpegManager extends EventEmitter {
     if (!rec) return;
     const { job } = rec;
     const args = this.buildArgs(job);
-    const cmd = [process.env.FFMPEG_PATH ?? 'ffmpeg', ...args].join(' ');
-    console.log('Ejecutando:', cmd);
-    const proc = spawn(process.env.FFMPEG_PATH ?? 'ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    const ffmpegPath = process.env.FFMPEG_PATH ?? 'ffmpeg';
+    console.log('Ejecutando:', [ffmpegPath, ...args].join(' '));
+    const proc = spawn(ffmpegPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
 
     job.pid = proc.pid ?? undefined;
     job.startedAt = Date.now();
@@ -67,12 +118,14 @@ export class FfmpegManager extends EventEmitter {
     rec.proc = proc;
     this.emit('update', { ...job });
 
-    proc.stderr.setEncoding('utf8');
-    proc.stderr.on('data', chunk => {
-      job.lastLog = chunk;
-      parseFfmpegProgress(chunk, job);
-      this.emit('update', { ...job });
-    });
+    if (proc.stderr) {
+      proc.stderr.setEncoding('utf8');
+      proc.stderr.on('data', chunk => {
+        job.lastLog = chunk;
+        parseFfmpegProgress(chunk, job);
+        this.emit('update', { ...job });
+      });
+    }
 
     proc.on('exit', (code, sig) => {
       job.endedAt = Date.now();
@@ -124,7 +177,6 @@ export class FfmpegManager extends EventEmitter {
     rec.job.lastLog = undefined;
     rec.job.errorMsg = undefined;
     this.emit('update', { ...rec.job });
-    // kill is async; small delay to avoid race
     setTimeout(() => this.startJob(id), 250);
   }
 
