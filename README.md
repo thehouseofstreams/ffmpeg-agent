@@ -8,9 +8,11 @@ Un agente en Node.js que permite iniciar, pausar, reiniciar y eliminar procesos 
 
 - Node.js 20+
 - FFmpeg instalado (`ffmpeg -version`)
-- `pm2` (si lo usás sin Docker)
+- Git (para clonar el repositorio)
+- `pm2` 
 - `jq` (para test script)
 
+### Comandos:
 ```bash
 apt update
 apt install curl -y
@@ -18,6 +20,7 @@ curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
 apt install nodejs -y
 apt install ffmpeg -y
 apt install git -y
+npm install -g pm2
 apt install jq -y
 ```
 
