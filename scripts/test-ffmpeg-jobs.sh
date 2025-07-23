@@ -9,24 +9,63 @@ HEADERS='{
   "referer": "https://my-player.com"
 }'
 
-function create_job() {
+CUSTOM_OPTIONS='{
+  "crf": 22,
+  "fps": 30,
+  "width": 640,
+  "videoBitrate": "1200k",
+  "audioBitrate": "128k",
+  "maxrate": "1500k",
+  "bufsize": "2000k"
+}'
+
+create_job() {
   METHOD=$1
   PRESET=$2
-  OPTIONS=$3
-  NAME=$4
+  NAME=$3
 
   echo "➡️  Creando job: $NAME"
 
+  if [ "$PRESET" = "custom" ]; then
+    JSON_PAYLOAD=$(jq -n \
+      --arg input "$INPUT_URL" \
+      --arg output "$OUTPUT_URL" \
+      --arg method "$METHOD" \
+      --arg preset "$PRESET" \
+      --argjson headers "$HEADERS" \
+      --argjson customOptions "$CUSTOM_OPTIONS" \
+      '{
+        input: $input,
+        output: $output,
+        method: $method,
+        preset: $preset,
+        headers: $headers,
+        customOptions: $customOptions
+      }')
+  else
+    JSON_PAYLOAD=$(jq -n \
+      --arg input "$INPUT_URL" \
+      --arg output "$OUTPUT_URL" \
+      --arg method "$METHOD" \
+      --arg preset "$PRESET" \
+      --argjson headers "$HEADERS" \
+      '{
+        input: $input,
+        output: $output,
+        method: $method,
+        preset: $preset,
+        headers: $headers
+      }')
+  fi
+
   JOB_ID=$(curl -s -X POST "$SERVER/jobs" \
     -H "Content-Type: application/json" \
-    -d '{
-      "input": "'"$INPUT_URL"'",
-      "output": "'"$OUTPUT_URL"'",
-      "method": "'"$METHOD"'",
-      "preset": "'"$PRESET"'",
-      "headers": '"$HEADERS"',
-      '"$OPTIONS"'
-    }' | jq -r .id)
+    -d "$JSON_PAYLOAD" | jq -r .id)
+
+  if [[ -z "$JOB_ID" || "$JOB_ID" == "null" ]]; then
+    echo "❌ Error al crear el job $NAME"
+    return
+  fi
 
   echo "✅ [$NAME] ID: $JOB_ID"
 
@@ -50,29 +89,20 @@ function create_job() {
 }
 
 # 1. COPY MODE
-create_job "copy" "low" "" "copy-mode"
+create_job "copy" "low" "copy-mode"
 
 # 2. ENCODE PRESET: low
-create_job "encode" "low" "" "encode-low"
+create_job "encode" "low" "encode-low"
 
 # 3. ENCODE PRESET: medium
-create_job "encode" "medium" "" "encode-medium"
+create_job "encode" "medium" "encode-medium"
 
 # 4. ENCODE PRESET: high
-create_job "encode" "high" "" "encode-high"
+create_job "encode" "high" "encode-high"
 
-# 5. CUSTOM preset
-CUSTOM_OPTIONS='"customOptions": {
-  "crf": 22,
-  "fps": 30,
-  "width": 640,
-  "videoBitrate": "1200k",
-  "audioBitrate": "128k",
-  "maxrate": "1500k",
-  "bufsize": "2000k"
-}'
-create_job "encode" "custom" "$CUSTOM_OPTIONS" "custom-encode"
+# 5. CUSTOM ENCODE
+create_job "encode" "custom" "custom-encode"
 
-# Final
+# Final list
 echo "📋 Listado final de jobs:"
 curl -s "$SERVER/jobs" | jq
