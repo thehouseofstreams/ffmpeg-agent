@@ -1,4 +1,4 @@
-# 🧪 FFmpeg Agent (Node.js + PM2 o Docker)
+# 🧪 FFmpeg Agent (Node.js + PM2)
 
 Un agente en Node.js que permite iniciar, pausar, reiniciar y eliminar procesos de FFmpeg vía API REST y WebSocket. Soporta múltiples calidades (`low`, `medium`, `high`, `custom`), headers personalizados (`user-agent`, `referer`) y test automático vía shell.
 
