@@ -30,8 +30,9 @@ export class FfmpegManager extends EventEmitter {
         headerLines.push(`User-Agent: ${job.headers.userAgent}`);
       if (job.headers?.referer)
         headerLines.push(`Referer: ${job.headers.referer}`);
-      const headerString = headerLines.join('\r\n') + '\r\n';
+      const headerString = headerLines.join('\\r\\n') + '\\r\\n';
       headers.push('-headers', headerString);
+      console.log('Headers argument:', JSON.stringify(headerString));
     }
 
     const inputArgs = [...headers, '-i', job.input];
@@ -113,6 +114,8 @@ export class FfmpegManager extends EventEmitter {
     const args = this.buildArgs(job);
     const ffmpegPath = process.env.FFMPEG_PATH ?? 'ffmpeg';
     console.log('Ejecutando:', [ffmpegPath, ...args].join(' '));
+    
+console.log('Args:', args);
     const proc = spawn(ffmpegPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
 
     job.pid = proc.pid ?? undefined;
