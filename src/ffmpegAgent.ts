@@ -25,10 +25,13 @@ export class FfmpegManager extends EventEmitter {
     // Headers opcionales
     const headers: string[] = [];
     if (job.headers?.userAgent || job.headers?.referer) {
-      const headerLines = [];
-      if (job.headers?.userAgent) headerLines.push(`User-Agent: ${job.headers?.userAgent}`);
-      if (job.headers?.referer) headerLines.push(`Referer: ${job.headers?.referer}`);
-      headers.push('-headers', headerLines.join('\r\n'));
+      const headerLines: string[] = [];
+      if (job.headers?.userAgent)
+        headerLines.push(`User-Agent: ${job.headers.userAgent}`);
+      if (job.headers?.referer)
+        headerLines.push(`Referer: ${job.headers.referer}`);
+      const headerString = headerLines.join('\r\n') + '\r\n';
+      headers.push('-headers', headerString);
     }
 
     const inputArgs = [...headers, '-i', job.input];
